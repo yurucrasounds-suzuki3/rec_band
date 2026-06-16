@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:firebase_storage/firebase_storage.dart';
 
@@ -21,12 +22,14 @@ class StorageService {
   Future<StorageUploadResult> uploadSongFile({
     required String uid,
     required String songId,
-    required File file,
     required String filename,
+    File? file,
+    Uint8List? bytes,
   }) {
     return _uploadFile(
       path: 'songs/$uid/$songId/$filename',
       file: file,
+      bytes: bytes,
     );
   }
 
@@ -34,21 +37,30 @@ class StorageService {
     required String uid,
     required String songId,
     required String partId,
-    required File file,
     required String filename,
+    File? file,
+    Uint8List? bytes,
   }) {
     return _uploadFile(
       path: 'parts/$songId/$uid/$partId/$filename',
       file: file,
+      bytes: bytes,
     );
   }
 
   Future<StorageUploadResult> _uploadFile({
     required String path,
-    required File file,
+    File? file,
+    Uint8List? bytes,
   }) async {
     final ref = _storage.ref(path);
-    await ref.putFile(file);
+    if (file != null) {
+      await ref.putFile(file);
+    } else if (bytes != null) {
+      await ref.putData(bytes);
+    } else {
+      throw ArgumentError('Either file or bytes must be provided.');
+    }
     final downloadUrl = await ref.getDownloadURL();
     return StorageUploadResult(downloadUrl: downloadUrl, storagePath: path);
   }

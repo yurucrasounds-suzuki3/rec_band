@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/auth_service.dart';
@@ -16,6 +17,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _passwordFocusNode = FocusNode();
   bool _loading = false;
   String? _errorText;
 
@@ -23,7 +25,21 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
+  }
+
+  Future<void> _pasteEmail() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim();
+    if (text == null || text.isEmpty) {
+      return;
+    }
+
+    _emailController.text = text;
+    _emailController.selection = TextSelection.collapsed(
+      offset: _emailController.text.length,
+    );
   }
 
   Future<void> _submit() async {
@@ -77,23 +93,63 @@ class _LoginScreenState extends State<LoginScreen> {
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    autofillHints: const [AutofillHints.email],
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       labelText: 'メールアドレス',
+                      hintText: 'name@example.com',
+                      suffixIcon: Icon(Icons.content_paste_rounded),
                     ),
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                    onFieldSubmitted: (_) {
+                      FocusScope.of(context).requestFocus(_passwordFocusNode);
+                    },
+                    onChanged: (_) {
+                      if (_errorText != null) {
+                        setState(() => _errorText = null);
+                      }
+                    },
                     validator: (value) {
                       if (value == null || value.trim().isEmpty) {
                         return 'メールアドレスを入力してください';
                       }
                       return null;
                     },
+                    onTap: () {},
                   ),
-                  const SizedBox(height: 12),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: _pasteEmail,
+                      icon: const Icon(Icons.content_paste_go_rounded),
+                      label: const Text('メールを貼り付け'),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   TextFormField(
                     controller: _passwordController,
+                    focusNode: _passwordFocusNode,
                     obscureText: true,
+                    textInputAction: TextInputAction.done,
+                    autofillHints: const [AutofillHints.password],
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    smartDashesType: SmartDashesType.disabled,
+                    smartQuotesType: SmartQuotesType.disabled,
                     decoration: const InputDecoration(
                       labelText: 'パスワード',
                     ),
+                    onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                    onFieldSubmitted: (_) => _submit(),
+                    onChanged: (_) {
+                      if (_errorText != null) {
+                        setState(() => _errorText = null);
+                      }
+                    },
                     validator: (value) {
                       if (value == null || value.length < 6) {
                         return '6文字以上で入力してください';
@@ -108,6 +164,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       style: const TextStyle(color: Colors.redAccent),
                     ),
                   ],
+                  const SizedBox(height: 4),
+                  Text(
+                    'Mac で @ を入れづらいときは、メールアドレスを貼り付けても使えます。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                   const SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: _loading ? null : _submit,

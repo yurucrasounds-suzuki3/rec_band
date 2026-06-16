@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -27,15 +28,17 @@ class SongService {
     required String comment,
     required String ownerUid,
     required String ownerName,
-    required File file,
     required String filename,
+    File? file,
+    Uint8List? bytes,
   }) async {
     final doc = _firestore.collection('songs').doc();
     final upload = await _storageService.uploadSongFile(
       uid: ownerUid,
       songId: doc.id,
-      file: file,
       filename: filename,
+      file: file,
+      bytes: bytes,
     );
 
     final song = Song(

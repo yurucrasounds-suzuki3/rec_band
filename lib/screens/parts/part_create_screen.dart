@@ -31,14 +31,22 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
   }
 
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['mp3', 'm4a', 'wav', 'aac'],
-    );
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mp3', 'm4a', 'wav', 'aac'],
+        withData: true,
+      );
 
-    if (result != null && result.files.isNotEmpty) {
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _pickedFile = result.files.first;
+          _errorText = null;
+        });
+      }
+    } catch (_) {
       setState(() {
-        _pickedFile = result.files.first;
+        _errorText = 'ファイルを開けませんでした。iPhone シミュレータなら Files に入れた音源を選んでください。';
       });
     }
   }
@@ -69,8 +77,9 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
             partName: _partNameController.text.trim(),
             uploaderUid: user.uid,
             uploaderName: user.displayName ?? '名無し',
-            file: File(_pickedFile!.path!),
             filename: _pickedFile!.name,
+            file: _pickedFile!.path == null ? null : File(_pickedFile!.path!),
+            bytes: _pickedFile!.bytes,
           );
 
       if (mounted) {
@@ -124,6 +133,18 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
                     _pickedFile == null ? '音声ファイルを選ぶ' : _pickedFile!.name,
                   ),
                 ),
+                const SizedBox(height: 8),
+                Text(
+                  'Mac で試すときは、Finder の音源を iPhone シミュレータの Files に入れてから選ぶと通りやすいです。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                if (_pickedFile != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '選択中: ${_pickedFile!.name} (${(_pickedFile!.size / 1024 / 1024).toStringAsFixed(2)} MB)',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 if (_errorText != null) ...[
                   const SizedBox(height: 12),
                   Text(

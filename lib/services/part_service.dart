@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -28,16 +29,18 @@ class PartService {
     required String partName,
     required String uploaderUid,
     required String uploaderName,
-    required File file,
     required String filename,
+    File? file,
+    Uint8List? bytes,
   }) async {
     final doc = _firestore.collection('parts').doc();
     final upload = await _storageService.uploadPartFile(
       uid: uploaderUid,
       songId: songId,
       partId: doc.id,
-      file: file,
       filename: filename,
+      file: file,
+      bytes: bytes,
     );
 
     final part = Part(
