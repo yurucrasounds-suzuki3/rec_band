@@ -4,7 +4,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../models/upload_source.dart';
 import '../../services/auth_service.dart';
+import '../../services/demo_audio_service.dart';
 import '../../services/song_service.dart';
 import '../../widgets/brand_header.dart';
 
@@ -20,6 +22,7 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
   final _titleController = TextEditingController();
   final _commentController = TextEditingController();
   PlatformFile? _pickedFile;
+  UploadSource? _demoSource;
   bool _loading = false;
   String? _errorText;
 
@@ -41,6 +44,7 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
       if (result != null && result.files.isNotEmpty) {
         setState(() {
           _pickedFile = result.files.first;
+          _demoSource = null;
           _errorText = null;
         });
       }
@@ -51,11 +55,37 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
     }
   }
 
+  Future<void> _useDemoAudio() async {
+    setState(() {
+      _loading = true;
+      _errorText = null;
+    });
+
+    try {
+      final demoSource = await context.read<DemoAudioService>().loadSongDemo();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _pickedFile = null;
+        _demoSource = demoSource;
+      });
+    } catch (_) {
+      setState(() {
+        _errorText = 'デモ音源を読み込めませんでした。アプリを再起動してもう一度試してください。';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    if (_pickedFile?.path == null) {
+    if (_pickedFile == null && _demoSource == null) {
       setState(() => _errorText = '音声ファイルを選んでください');
       return;
     }
@@ -77,9 +107,9 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
             comment: _commentController.text.trim(),
             ownerUid: user.uid,
             ownerName: user.displayName ?? '名無し',
-            filename: _pickedFile!.name,
-            file: _pickedFile!.path == null ? null : File(_pickedFile!.path!),
-            bytes: _pickedFile!.bytes,
+            filename: _pickedFile?.name ?? _demoSource!.filename,
+            file: _pickedFile?.path == null ? null : File(_pickedFile!.path!),
+            bytes: _pickedFile?.bytes ?? _demoSource!.bytes,
           );
 
       if (mounted) {
@@ -89,7 +119,10 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
         _formKey.currentState!.reset();
         _titleController.clear();
         _commentController.clear();
-        setState(() => _pickedFile = null);
+        setState(() {
+          _pickedFile = null;
+          _demoSource = null;
+        });
       }
     } catch (_) {
       setState(() => _errorText = '投稿できませんでした。Firebase 設定を確認してください。');
@@ -147,15 +180,28 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
                   _pickedFile == null ? '音声ファイルを選ぶ' : _pickedFile!.name,
                 ),
               ),
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                onPressed: _loading ? null : _useDemoAudio,
+                icon: const Icon(Icons.bolt_rounded),
+                label: const Text('デモ音源を使う'),
+              ),
               const SizedBox(height: 8),
               Text(
-                'Mac で試すときは、Finder の音源を iPhone シミュレータの Files に入れてから選ぶと通りやすいです。',
+                'シミュレータで試すなら「デモ音源を使う」が最短です。実ファイルを使う場合は Files 経由で選んでください。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               if (_pickedFile != null) ...[
                 const SizedBox(height: 8),
                 Text(
                   '選択中: ${_pickedFile!.name} (${(_pickedFile!.size / 1024 / 1024).toStringAsFixed(2)} MB)',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+              if (_demoSource != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '選択中: ${_demoSource!.label}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
