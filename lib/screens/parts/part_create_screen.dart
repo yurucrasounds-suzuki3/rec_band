@@ -30,6 +30,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
 
   UploadSource? _demoSource;
   String? _recordedPath;
+  String? _selectedFilename;
   bool _songLoading = true;
   bool _songPlaying = false;
   bool _previewPlaying = false;
@@ -126,6 +127,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
       await _recordingService.deleteIfExists(_recordedPath);
       _demoSource = null;
       _recordedPath = null;
+      _selectedFilename = null;
 
       await _runCountdown();
       await _songPlayer.seek(Duration.zero);
@@ -135,6 +137,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
       if (mounted) {
         setState(() {
           _recordedPath = path;
+          _selectedFilename = 'part_recording.m4a';
           _recording = true;
         });
       }
@@ -171,11 +174,10 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
         throw StateError('recording_not_found');
       }
 
-      await _previewPlayer.setFilePath(path);
-
       if (mounted) {
         setState(() {
           _recordedPath = path;
+          _selectedFilename = 'part_recording.m4a';
           _recording = false;
         });
       }
@@ -200,23 +202,41 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
     setState(() => _errorText = null);
     try {
       if (_previewPlaying) {
-        await _previewPlayer.pause();
+        await Future.wait([
+          _songPlayer.pause(),
+          _previewPlayer.pause(),
+        ]);
       } else {
-        await _previewPlayer.stop();
-        await _previewPlayer.setFilePath(path);
-        await _previewPlayer.play();
+        await Future.wait([
+          _songPlayer.stop(),
+          _previewPlayer.stop(),
+        ]);
+        await Future.wait([
+          _songPlayer.setUrl(widget.song.audioUrl),
+          _previewPlayer.setFilePath(path),
+        ]);
+        await Future.wait([
+          _songPlayer.seek(Duration.zero),
+          _previewPlayer.seek(Duration.zero),
+        ]);
+        await Future.wait([
+          _songPlayer.play(),
+          _previewPlayer.play(),
+        ]);
       }
     } catch (_) {
-      setState(() => _errorText = '録音した音源を再生できませんでした。');
+      setState(() => _errorText = '元曲と録音を重ねて再生できませんでした。');
     }
   }
 
   Future<void> _discardRecording() async {
     await _previewPlayer.stop();
+    await _songPlayer.pause();
     await _recordingService.deleteIfExists(_recordedPath);
     setState(() {
       _recordedPath = null;
       _demoSource = null;
+      _selectedFilename = null;
       _errorText = null;
     });
   }
@@ -229,6 +249,11 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
 
     try {
       final demoSource = await context.read<DemoAudioService>().loadPartDemo();
+      final path = await _recordingService.writeTempAudio(
+        demoSource.bytes,
+        prefix: 'demo_part',
+        extension: 'wav',
+      );
       await _previewPlayer.stop();
       await _songPlayer.pause();
       await _recordingService.deleteIfExists(_recordedPath);
@@ -239,7 +264,8 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
 
       setState(() {
         _demoSource = demoSource;
-        _recordedPath = null;
+        _recordedPath = path;
+        _selectedFilename = demoSource.filename;
         _recording = false;
       });
     } catch (_) {
@@ -283,11 +309,8 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
             partName: _partNameController.text.trim(),
             uploaderUid: user.uid,
             uploaderName: user.displayName ?? '名無し',
-            filename: _recordedPath != null
-                ? 'part_recording.m4a'
-                : _demoSource!.filename,
+            filename: _selectedFilename ?? 'part_recording.m4a',
             file: _recordedPath == null ? null : File(_recordedPath!),
-            bytes: _demoSource?.bytes,
           );
 
       if (mounted) {
@@ -457,7 +480,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Expanded(child: Text('録音した音源を試聴する')),
+                        const Expanded(child: Text('元曲と重ねて確認する')),
                       ],
                     ),
                   if (_demoSource != null)
@@ -467,6 +490,13 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
                     ),
                   if (_recordedPath == null && _demoSource == null)
                     const Text('まだ録音はありません。'),
+                  if (_recordedPath != null || _demoSource != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '確認では、元曲とあなたの音を同時に再生します。',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [

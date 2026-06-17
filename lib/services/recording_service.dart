@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:audio_session/audio_session.dart';
 import 'package:path_provider/path_provider.dart';
@@ -53,6 +54,19 @@ class RecordingService {
 
   Future<String?> stopRecording() {
     return _recorder.stop();
+  }
+
+  Future<String> writeTempAudio(
+    Uint8List bytes, {
+    String prefix = 'audio',
+    String extension = 'm4a',
+  }) async {
+    final tempDir = await getTemporaryDirectory();
+    final path =
+        '${tempDir.path}/${prefix}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final file = File(path);
+    await file.writeAsBytes(bytes, flush: true);
+    return path;
   }
 
   Future<void> deleteIfExists(String? path) async {
