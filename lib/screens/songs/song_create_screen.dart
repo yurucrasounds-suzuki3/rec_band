@@ -206,7 +206,7 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
     }
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({required bool isPublic}) async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -236,6 +236,7 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
             comment: _commentController.text.trim(),
             ownerUid: user.uid,
             ownerName: user.displayName ?? '名無し',
+            isPublic: isPublic,
             filename: _recordedPath != null
                 ? 'song_recording.m4a'
                 : _demoSource!.filename,
@@ -245,7 +246,7 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('曲を投稿しました')),
+          SnackBar(content: Text(isPublic ? '曲を投稿しました' : '未公開で保存しました')),
         );
         _formKey.currentState!.reset();
         _titleController.clear();
@@ -411,11 +412,16 @@ class _SongCreateScreenState extends State<SongCreateScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: ElevatedButton(
-                        onPressed: _loading ? null : _submit,
+                        onPressed: _loading ? null : () => _submit(isPublic: true),
                         child: Text(_loading ? '投稿中...' : 'この録音を投稿する'),
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _loading ? null : () => _submit(isPublic: false),
+                  child: const Text('未公開で保存する'),
                 ),
               ],
             ),

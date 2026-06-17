@@ -9,7 +9,11 @@ class Song {
     required this.ownerName,
     required this.audioUrl,
     required this.audioPath,
+    required this.isPublic,
+    required this.bpm,
+    required this.clickEnabled,
     required this.createdAt,
+    required this.publishedAt,
   });
 
   final String id;
@@ -19,7 +23,11 @@ class Song {
   final String ownerName;
   final String audioUrl;
   final String audioPath;
+  final bool isPublic;
+  final int? bpm;
+  final bool clickEnabled;
   final DateTime? createdAt;
+  final DateTime? publishedAt;
 
   factory Song.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
@@ -31,7 +39,11 @@ class Song {
       ownerName: data['ownerName'] as String? ?? '',
       audioUrl: data['audioUrl'] as String? ?? '',
       audioPath: data['audioPath'] as String? ?? '',
+      isPublic: data['isPublic'] as bool? ?? true,
+      bpm: data['bpm'] as int?,
+      clickEnabled: data['clickEnabled'] as bool? ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+      publishedAt: (data['publishedAt'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -44,7 +56,11 @@ class Song {
       'ownerName': ownerName,
       'audioUrl': audioUrl,
       'audioPath': audioPath,
+      'isPublic': isPublic,
+      'bpm': bpm,
+      'clickEnabled': clickEnabled,
       'createdAt': FieldValue.serverTimestamp(),
+      'publishedAt': isPublic ? FieldValue.serverTimestamp() : null,
     };
   }
 }

@@ -35,8 +35,18 @@ class SongCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text('募集メッセージ: ${song.comment}'),
               const SizedBox(height: 8),
+              if (!song.isPublic)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFDE68A),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Text('未公開保存'),
+                ),
+              if (!song.isPublic) const SizedBox(height: 8),
               Text(
-                formatDateTime(song.createdAt),
+                formatDateTime(song.publishedAt ?? song.createdAt),
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],

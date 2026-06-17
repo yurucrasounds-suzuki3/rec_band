@@ -18,9 +18,36 @@ class SongService {
   Stream<List<Song>> watchSongs() {
     return _firestore
         .collection('songs')
-        .orderBy('createdAt', descending: true)
         .snapshots()
-        .map((snapshot) => snapshot.docs.map(Song.fromDoc).toList());
+        .map(
+          (snapshot) => snapshot.docs
+              .map(Song.fromDoc)
+              .where((song) => song.isPublic)
+              .toList()
+            ..sort((a, b) {
+              final left = a.publishedAt ?? a.createdAt ?? DateTime(1970);
+              final right = b.publishedAt ?? b.createdAt ?? DateTime(1970);
+              return right.compareTo(left);
+            }),
+        );
+  }
+
+  Stream<List<Song>> watchDraftSongs(String ownerUid) {
+    return _firestore
+        .collection('songs')
+        .where('ownerUid', isEqualTo: ownerUid)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(Song.fromDoc)
+              .where((song) => !song.isPublic)
+              .toList()
+            ..sort((a, b) {
+              final left = a.createdAt ?? DateTime(1970);
+              final right = b.createdAt ?? DateTime(1970);
+              return right.compareTo(left);
+            }),
+        );
   }
 
   Future<void> createSong({
@@ -29,6 +56,9 @@ class SongService {
     required String ownerUid,
     required String ownerName,
     required String filename,
+    bool isPublic = true,
+    int? bpm,
+    bool clickEnabled = false,
     File? file,
     Uint8List? bytes,
   }) async {
@@ -49,9 +79,20 @@ class SongService {
       ownerName: ownerName,
       audioUrl: upload.downloadUrl,
       audioPath: upload.storagePath,
+      isPublic: isPublic,
+      bpm: bpm,
+      clickEnabled: clickEnabled,
       createdAt: null,
+      publishedAt: null,
     );
 
     await doc.set(song.toMap());
+  }
+
+  Future<void> publishSong(String songId) {
+    return _firestore.collection('songs').doc(songId).update({
+      'isPublic': true,
+      'publishedAt': FieldValue.serverTimestamp(),
+    });
   }
 }

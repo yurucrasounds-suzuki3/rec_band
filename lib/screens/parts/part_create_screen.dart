@@ -279,7 +279,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
     }
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({required bool isPublic}) async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -309,13 +309,14 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
             partName: _partNameController.text.trim(),
             uploaderUid: user.uid,
             uploaderName: user.displayName ?? '名無し',
+            isPublic: isPublic,
             filename: _selectedFilename ?? 'part_recording.m4a',
             file: _recordedPath == null ? null : File(_recordedPath!),
           );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('参加音源を投稿しました')),
+          SnackBar(content: Text(isPublic ? '参加音源を投稿しました' : '未公開で保存しました')),
         );
         Navigator.of(context).pop();
       }
@@ -511,11 +512,16 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: _loading ? null : _submit,
+                          onPressed: _loading ? null : () => _submit(isPublic: true),
                           child: Text(_loading ? '投稿中...' : 'この録音を投稿する'),
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(
+                    onPressed: _loading ? null : () => _submit(isPublic: false),
+                    child: const Text('未公開で保存する'),
                   ),
                 ],
               ),

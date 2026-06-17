@@ -77,17 +77,33 @@ class SongDetailScreen extends StatelessWidget {
                     .map(
                       (part) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: Column(
-                          children: [
-                            PartCard(part: part),
-                            const SizedBox(height: 8),
-                            LayeredAudioPlayerTile(
-                              title: 'この参加音源を重ねて聴く',
-                              subtitle: part.partName,
-                              baseUrl: song.audioUrl,
-                              overlayUrl: part.audioUrl,
-                            ),
-                          ],
+                        child: StreamBuilder<bool>(
+                          stream: context.read<PartService>().watchLiked(part.id),
+                          initialData: false,
+                          builder: (context, likedSnapshot) {
+                            final isLiked = likedSnapshot.data ?? false;
+                            return Column(
+                              children: [
+                                PartCard(
+                                  part: part,
+                                  isLiked: isLiked,
+                                  onLikeToggle: () async {
+                                    await context.read<PartService>().toggleLike(
+                                          partId: part.id,
+                                          isLiked: isLiked,
+                                        );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                LayeredAudioPlayerTile(
+                                  title: 'この参加音源を重ねて聴く',
+                                  subtitle: part.partName,
+                                  baseUrl: song.audioUrl,
+                                  overlayUrl: part.audioUrl,
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                     )
