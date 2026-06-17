@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -34,6 +35,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
   bool _previewPlaying = false;
   bool _recording = false;
   bool _loading = false;
+  int? _countdown;
   String? _errorText;
 
   @override
@@ -69,8 +71,23 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
     _partNameController.dispose();
     _songPlayer.dispose();
     _previewPlayer.dispose();
+    _recordingService.deleteIfExists(_recordedPath);
     _recordingService.dispose();
     super.dispose();
+  }
+
+  Future<void> _runCountdown() async {
+    for (var count = 3; count >= 1; count--) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _countdown = count);
+      await Future<void>.delayed(const Duration(seconds: 1));
+    }
+
+    if (mounted) {
+      setState(() => _countdown = null);
+    }
   }
 
   Future<void> _toggleSongPlayback() async {
@@ -106,15 +123,18 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
 
     try {
       await _previewPlayer.stop();
+      await _recordingService.deleteIfExists(_recordedPath);
       _demoSource = null;
       _recordedPath = null;
 
+      await _runCountdown();
       await _songPlayer.seek(Duration.zero);
       await _songPlayer.play();
-      await _recordingService.startRecording();
+      final path = await _recordingService.startRecording(prefix: 'part');
 
       if (mounted) {
         setState(() {
+          _recordedPath = path;
           _recording = true;
         });
       }
@@ -172,7 +192,8 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
   }
 
   Future<void> _togglePreview() async {
-    if (_recordedPath == null) {
+    final path = _recordedPath;
+    if (path == null) {
       return;
     }
 
@@ -181,7 +202,8 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
       if (_previewPlaying) {
         await _previewPlayer.pause();
       } else {
-        await _previewPlayer.seek(Duration.zero);
+        await _previewPlayer.stop();
+        await _previewPlayer.setFilePath(path);
         await _previewPlayer.play();
       }
     } catch (_) {
@@ -191,6 +213,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
 
   Future<void> _discardRecording() async {
     await _previewPlayer.stop();
+    await _recordingService.deleteIfExists(_recordedPath);
     setState(() {
       _recordedPath = null;
       _demoSource = null;
@@ -208,6 +231,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
       final demoSource = await context.read<DemoAudioService>().loadPartDemo();
       await _previewPlayer.stop();
       await _songPlayer.pause();
+      await _recordingService.deleteIfExists(_recordedPath);
 
       if (!mounted) {
         return;
@@ -361,15 +385,28 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
                   Text(
                     _recording
                         ? '録音中です。終わったら停止してください。'
-                        : '録音を始めると、元の曲を最初から流します。',
+                        : '録音を始めると 3 秒カウントのあと、元の曲を最初から流します。',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  if (_countdown != null) ...[
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Text(
+                        '$_countdown',
+                        style: Theme.of(context).textTheme.displayLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: _loading || _recording ? null : _startRecording,
+                          onPressed: _loading || _recording || _countdown != null
+                              ? null
+                              : _startRecording,
                           icon: const Icon(Icons.fiber_manual_record_rounded),
                           label: const Text('録音を始める'),
                         ),
