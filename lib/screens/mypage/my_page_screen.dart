@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../services/part_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/song_service.dart';
+import '../../widgets/audio_player_tile.dart';
 import '../../widgets/song_card.dart';
 import '../songs/song_detail_screen.dart';
 
@@ -217,28 +218,22 @@ class MyPageScreen extends StatelessWidget {
                     .map(
                       (part) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(part.partName),
-                                      const SizedBox(height: 4),
-                                      Text('いいね ${part.likeCount}'),
-                                    ],
-                                  ),
-                                ),
-                                OutlinedButton(
-                                  onPressed: () => _confirmDeletePart(context, part),
-                                  child: const Text('削除する'),
-                                ),
-                              ],
+                        child: Column(
+                          children: [
+                            AudioPlayerTile(
+                              title: part.partName,
+                              subtitle: 'いいね ${part.likeCount}',
+                              url: part.audioUrl,
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: OutlinedButton(
+                                onPressed: () => _confirmDeletePart(context, part),
+                                child: const Text('削除する'),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     )
