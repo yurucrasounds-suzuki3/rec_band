@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../models/song.dart';
 import '../../services/part_service.dart';
 import '../../widgets/audio_player_tile.dart';
+import '../../widgets/layered_audio_player_tile.dart';
 import '../../widgets/part_card.dart';
 import '../parts/part_create_screen.dart';
 
@@ -76,7 +77,18 @@ class SongDetailScreen extends StatelessWidget {
                     .map(
                       (part) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: PartCard(part: part),
+                        child: Column(
+                          children: [
+                            PartCard(part: part),
+                            const SizedBox(height: 8),
+                            LayeredAudioPlayerTile(
+                              title: 'この参加音源を重ねて聴く',
+                              subtitle: part.partName,
+                              baseUrl: song.audioUrl,
+                              overlayUrl: part.audioUrl,
+                            ),
+                          ],
+                        ),
                       ),
                     )
                     .toList(),
