@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/upload_source.dart';
@@ -9,6 +9,7 @@ import '../../models/song.dart';
 import '../../services/auth_service.dart';
 import '../../services/demo_audio_service.dart';
 import '../../services/part_service.dart';
+import '../../services/recording_service.dart';
 
 class PartCreateScreen extends StatefulWidget {
   const PartCreateScreen({super.key, required this.song});
@@ -22,37 +23,179 @@ class PartCreateScreen extends StatefulWidget {
 class _PartCreateScreenState extends State<PartCreateScreen> {
   final _formKey = GlobalKey<FormState>();
   final _partNameController = TextEditingController();
-  PlatformFile? _pickedFile;
+  final _songPlayer = AudioPlayer();
+  final _previewPlayer = AudioPlayer();
+  final _recordingService = RecordingService();
+
   UploadSource? _demoSource;
+  String? _recordedPath;
+  bool _songLoading = true;
+  bool _songPlaying = false;
+  bool _previewPlaying = false;
+  bool _recording = false;
   bool _loading = false;
   String? _errorText;
 
   @override
+  void initState() {
+    super.initState();
+    _prepareSong();
+    _songPlayer.playingStream.listen((playing) {
+      if (mounted) {
+        setState(() => _songPlaying = playing);
+      }
+    });
+    _previewPlayer.playingStream.listen((playing) {
+      if (mounted) {
+        setState(() => _previewPlaying = playing);
+      }
+    });
+  }
+
+  Future<void> _prepareSong() async {
+    try {
+      await _songPlayer.setUrl(widget.song.audioUrl);
+    } catch (_) {
+      _errorText = '元の曲を読み込めませんでした。通信状況を確認してください。';
+    } finally {
+      if (mounted) {
+        setState(() => _songLoading = false);
+      }
+    }
+  }
+
+  @override
   void dispose() {
     _partNameController.dispose();
+    _songPlayer.dispose();
+    _previewPlayer.dispose();
+    _recordingService.dispose();
     super.dispose();
   }
 
-  Future<void> _pickFile() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mp3', 'm4a', 'wav', 'aac'],
-        withData: true,
-      );
+  Future<void> _toggleSongPlayback() async {
+    if (_songLoading) {
+      return;
+    }
 
-      if (result != null && result.files.isNotEmpty) {
+    setState(() => _errorText = null);
+    try {
+      if (_songPlaying) {
+        await _songPlayer.pause();
+      } else {
+        await _songPlayer.play();
+      }
+    } catch (_) {
+      setState(() => _errorText = '元の曲を再生できませんでした。');
+    }
+  }
+
+  Future<void> _startRecording() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    if (_songLoading) {
+      setState(() => _errorText = '元の曲を読み込み中です。少し待ってください。');
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _errorText = null;
+    });
+
+    try {
+      await _previewPlayer.stop();
+      _demoSource = null;
+      _recordedPath = null;
+
+      await _songPlayer.seek(Duration.zero);
+      await _songPlayer.play();
+      await _recordingService.startRecording();
+
+      if (mounted) {
         setState(() {
-          _pickedFile = result.files.first;
-          _demoSource = null;
-          _errorText = null;
+          _recording = true;
+        });
+      }
+    } on StateError {
+      setState(() {
+        _errorText = 'マイクが使えませんでした。iPhone のマイク許可を確認してください。';
+      });
+    } catch (_) {
+      setState(() {
+        _errorText = '録音を開始できませんでした。イヤホンをつないで再度試してください。';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_recording) {
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _errorText = null;
+    });
+
+    try {
+      final path = await _recordingService.stopRecording();
+      await _songPlayer.pause();
+
+      if (path == null) {
+        throw StateError('recording_not_found');
+      }
+
+      await _previewPlayer.setFilePath(path);
+
+      if (mounted) {
+        setState(() {
+          _recordedPath = path;
+          _recording = false;
         });
       }
     } catch (_) {
       setState(() {
-        _errorText = 'ファイルを開けませんでした。iPhone シミュレータなら Files に入れた音源を選んでください。';
+        _errorText = '録音を保存できませんでした。もう一度録り直してください。';
+        _recording = false;
       });
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
+  }
+
+  Future<void> _togglePreview() async {
+    if (_recordedPath == null) {
+      return;
+    }
+
+    setState(() => _errorText = null);
+    try {
+      if (_previewPlaying) {
+        await _previewPlayer.pause();
+      } else {
+        await _previewPlayer.seek(Duration.zero);
+        await _previewPlayer.play();
+      }
+    } catch (_) {
+      setState(() => _errorText = '録音した音源を再生できませんでした。');
+    }
+  }
+
+  Future<void> _discardRecording() async {
+    await _previewPlayer.stop();
+    setState(() {
+      _recordedPath = null;
+      _demoSource = null;
+      _errorText = null;
+    });
   }
 
   Future<void> _useDemoAudio() async {
@@ -63,16 +206,21 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
 
     try {
       final demoSource = await context.read<DemoAudioService>().loadPartDemo();
+      await _previewPlayer.stop();
+      await _songPlayer.pause();
+
       if (!mounted) {
         return;
       }
+
       setState(() {
-        _pickedFile = null;
         _demoSource = demoSource;
+        _recordedPath = null;
+        _recording = false;
       });
     } catch (_) {
       setState(() {
-        _errorText = 'デモ音源を読み込めませんでした。アプリを再起動してもう一度試してください。';
+        _errorText = 'デモ音源を読み込めませんでした。';
       });
     } finally {
       if (mounted) {
@@ -85,8 +233,12 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    if (_pickedFile == null && _demoSource == null) {
-      setState(() => _errorText = '音声ファイルを選んでください');
+    if (_recording) {
+      setState(() => _errorText = '録音中です。先に停止してください。');
+      return;
+    }
+    if (_recordedPath == null && _demoSource == null) {
+      setState(() => _errorText = 'まずは録音するか、デモ音源を使ってください。');
       return;
     }
 
@@ -107,9 +259,11 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
             partName: _partNameController.text.trim(),
             uploaderUid: user.uid,
             uploaderName: user.displayName ?? '名無し',
-            filename: _pickedFile?.name ?? _demoSource!.filename,
-            file: _pickedFile?.path == null ? null : File(_pickedFile!.path!),
-            bytes: _pickedFile?.bytes ?? _demoSource!.bytes,
+            filename: _recordedPath != null
+                ? 'part_recording.m4a'
+                : _demoSource!.filename,
+            file: _recordedPath == null ? null : File(_recordedPath!),
+            bytes: _demoSource?.bytes,
           );
 
       if (mounted) {
@@ -130,7 +284,7 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('参加音源を投稿')),
+      appBar: AppBar(title: const Text('この曲に参加する')),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -139,70 +293,174 @@ class _PartCreateScreenState extends State<PartCreateScreen> {
             style: Theme.of(context).textTheme.headlineSmall,
           ),
           const SizedBox(height: 8),
-          const Text('例: ギターソロ、ドラム、ベース、コーラス'),
+          Text(
+            'イヤホンをつないで、元の曲を聴きながら1テイク録音できます。',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
           const SizedBox(height: 20),
           Form(
             key: _formKey,
-            child: Column(
-              children: [
-                TextFormField(
-                  controller: _partNameController,
-                  decoration: const InputDecoration(labelText: 'あなたのパート名'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'パート名を入力してください';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: _pickFile,
-                  icon: const Icon(Icons.library_music_outlined),
-                  label: Text(
-                    _pickedFile == null ? '音声ファイルを選ぶ' : _pickedFile!.name,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.tonalIcon(
-                  onPressed: _loading ? null : _useDemoAudio,
-                  icon: const Icon(Icons.bolt_rounded),
-                  label: const Text('デモ音源を使う'),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'シミュレータで試すなら「デモ音源を使う」が最短です。実ファイルを使う場合は Files 経由で選んでください。',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                if (_pickedFile != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '選択中: ${_pickedFile!.name} (${(_pickedFile!.size / 1024 / 1024).toStringAsFixed(2)} MB)',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-                if (_demoSource != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '選択中: ${_demoSource!.label}',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
-                if (_errorText != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _errorText!,
-                    style: const TextStyle(color: Colors.redAccent),
-                  ),
-                ],
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: Text(_loading ? '投稿中...' : '参加音源を投稿する'),
-                ),
-              ],
+            child: TextFormField(
+              controller: _partNameController,
+              decoration: const InputDecoration(
+                labelText: 'あなたのパート名',
+                hintText: '例: コーラス、ギターソロ、ドラム',
+              ),
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'パート名を入力してください';
+                }
+                return null;
+              },
             ),
           ),
+          const SizedBox(height: 20),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '1. 元の曲を確認する',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      IconButton.filled(
+                        onPressed: _songLoading || _recording ? null : _toggleSongPlayback,
+                        icon: Icon(
+                          _songPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _songLoading ? '読み込み中...' : '元の曲を再生 / 一時停止',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '2. 録音する',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _recording
+                        ? '録音中です。終わったら停止してください。'
+                        : '録音を始めると、元の曲を最初から流します。',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _loading || _recording ? null : _startRecording,
+                          icon: const Icon(Icons.fiber_manual_record_rounded),
+                          label: const Text('録音を始める'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _loading && !_recording
+                              ? null
+                              : (_recording ? _stopRecording : null),
+                          icon: const Icon(Icons.stop_circle_outlined),
+                          label: const Text('停止する'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton.tonalIcon(
+                    onPressed: _loading || _recording ? null : _useDemoAudio,
+                    icon: const Icon(Icons.bolt_rounded),
+                    label: const Text('シミュレータ用にデモ音源を使う'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '3. 録音を確認して投稿する',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  if (_recordedPath != null)
+                    Row(
+                      children: [
+                        IconButton.filled(
+                          onPressed: _togglePreview,
+                          icon: Icon(
+                            _previewPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(child: Text('録音した音源を試聴する')),
+                      ],
+                    ),
+                  if (_demoSource != null)
+                    Text(
+                      '選択中: ${_demoSource!.label}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  if (_recordedPath == null && _demoSource == null)
+                    const Text('まだ録音はありません。'),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: (_recordedPath == null && _demoSource == null) || _loading
+                              ? null
+                              : _discardRecording,
+                          child: const Text('録り直す'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: _loading ? null : _submit,
+                          child: Text(_loading ? '投稿中...' : 'この録音を投稿する'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_errorText != null) ...[
+            const SizedBox(height: 16),
+            Text(
+              _errorText!,
+              style: const TextStyle(color: Colors.redAccent),
+            ),
+          ],
         ],
       ),
     );
