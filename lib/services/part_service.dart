@@ -56,6 +56,24 @@ class PartService {
         );
   }
 
+  Stream<List<Part>> watchPublicParts(String uploaderUid) {
+    return _firestore
+        .collection('parts')
+        .where('uploaderUid', isEqualTo: uploaderUid)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(Part.fromDoc)
+              .where((part) => part.isPublic)
+              .toList()
+            ..sort((a, b) {
+              final left = a.publishedAt ?? a.createdAt ?? DateTime(1970);
+              final right = b.publishedAt ?? b.createdAt ?? DateTime(1970);
+              return right.compareTo(left);
+            }),
+        );
+  }
+
   Future<void> createPart({
     required String songId,
     required String partName,
@@ -145,5 +163,10 @@ class PartService {
         transaction.update(partDoc, {'likeCount': current + 1});
       }
     });
+  }
+
+  Future<void> deletePart(Part part) async {
+    await _storageService.deleteFile(part.audioPath);
+    await _firestore.collection('parts').doc(part.id).delete();
   }
 }

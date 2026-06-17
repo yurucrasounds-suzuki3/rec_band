@@ -64,4 +64,8 @@ class StorageService {
     final downloadUrl = await ref.getDownloadURL();
     return StorageUploadResult(downloadUrl: downloadUrl, storagePath: path);
   }
+
+  Future<void> deleteFile(String path) async {
+    await _storage.ref(path).delete();
+  }
 }

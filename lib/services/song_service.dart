@@ -50,6 +50,24 @@ class SongService {
         );
   }
 
+  Stream<List<Song>> watchPublicSongs(String ownerUid) {
+    return _firestore
+        .collection('songs')
+        .where('ownerUid', isEqualTo: ownerUid)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map(Song.fromDoc)
+              .where((song) => song.isPublic)
+              .toList()
+            ..sort((a, b) {
+              final left = a.publishedAt ?? a.createdAt ?? DateTime(1970);
+              final right = b.publishedAt ?? b.createdAt ?? DateTime(1970);
+              return right.compareTo(left);
+            }),
+        );
+  }
+
   Future<void> createSong({
     required String title,
     required String comment,
@@ -94,5 +112,10 @@ class SongService {
       'isPublic': true,
       'publishedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  Future<void> deleteSong(Song song) async {
+    await _storageService.deleteFile(song.audioPath);
+    await _firestore.collection('songs').doc(song.id).delete();
   }
 }
